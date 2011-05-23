@@ -283,6 +283,7 @@ static NSMutableArray *leafNode = nil;
 @interface MMFileDrawerController (Private)
 - (FilesOutlineView *)outlineView;
 - (void)pwdChanged:(NSNotification *)notification;
+- (void)updatePathComponentsPopup;
 - (void)changeWorkingDirectory:(NSString *)path;
 - (NSArray *)selectedItemPaths;
 - (void)openSelectedFilesInCurrentWindowWithLayout:(int)layout;
@@ -315,7 +316,10 @@ static NSMutableArray *leafNode = nil;
 
   drawer = [[NSDrawer alloc] initWithContentSize:NSMakeSize(200, 0)
                                    preferredEdge:edge];
-
+  
+  FlippedView *drawerView = [[[FlippedView alloc] initWithFrame:NSZeroRect] autorelease];
+  drawerView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  
   FilesOutlineView *filesView = [[[FilesOutlineView alloc] initWithFrame:NSZeroRect] autorelease];
   [filesView setDelegate:self];
   [filesView setDataSource:self];
@@ -328,15 +332,25 @@ static NSMutableArray *leafNode = nil;
   [filesView addTableColumn:column];
   [filesView setOutlineTableColumn:column];
 
+  pathComponentsPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 0, 25)];
+  pathComponentsPopup.autoresizingMask = NSViewWidthSizable;
+
   NSScrollView *scrollView = [[[NSScrollView alloc] initWithFrame:NSZeroRect] autorelease];
   [scrollView setHasHorizontalScroller:YES];
   [scrollView setHasVerticalScroller:YES];
   [scrollView setAutohidesScrollers:YES];
   [scrollView setDocumentView:filesView];
-  [drawer setContentView:scrollView];
+  
+  scrollView.frame = CGRectMake(0, pathComponentsPopup.frame.size.height, 0, 0);
+  scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  
+  [drawerView addSubview:scrollView];
+  [drawerView addSubview:pathComponentsPopup];
+  [drawer setContentView:drawerView];
 
   [self setView:filesView];
-
+  [self updatePathComponentsPopup];
+  
   [[NSNotificationCenter defaultCenter] addObserver:self
                                            selector:@selector(pwdChanged:)
                                                name:@"MMPwdChanged"
@@ -361,6 +375,7 @@ static NSMutableArray *leafNode = nil;
   }
 
   rootItem = [[FileSystemItem alloc] initWithPath:root parent:nil];
+  [self updatePathComponentsPopup];
   [(NSOutlineView *)[self view] expandItem:rootItem];
   [self watchRoot];
 }
@@ -455,24 +470,62 @@ static NSMutableArray *leafNode = nil;
   return nil;
 }
 
+- (void) updatePathComponentsPopup {
+  NSString *path = [rootItem fullPath];
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSMenu *menu = [[[NSMenu alloc] init] autorelease];
+  
+  NSArray *pathComponents = [path pathComponents];
+  int i;
+  int pathLen = [pathComponents count];
+  for (i = pathLen; i > 0; i--) {
+    NSArray *subPathComponents = [pathComponents subarrayWithRange:NSMakeRange(0, i)];
+    NSString *subPath = [NSString pathWithComponents:subPathComponents];
+    
+    NSMenuItem *item = [[[NSMenuItem alloc] initWithTitle:[fileManager displayNameAtPath:subPath] action:@selector(changeWorkingDirectoryToSelection:) keyEquivalent:@""] autorelease];
+    [item setTarget:self];
+    [item setRepresentedObject:subPath];
+    
+    NSImage *icon = [[NSWorkspace sharedWorkspace] iconForFile:subPath];
+    [icon setSize:NSMakeSize(16, 16)];
+    [item setImage:icon];
+
+    [menu addItem:item];
+  }
+  
+  [pathComponentsPopup setMenu:menu];
+  [pathComponentsPopup selectItemAtIndex:0];
+}
 
 // Data Source methods
 // ===================
  
 - (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
-  return item == nil ? 1 : [item numberOfChildren];
+  if (item == nil) {
+    item = rootItem;
+  }
+  return [item numberOfChildren];
 }
 
 - (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
-  return item == nil ? YES : ([item numberOfChildren] != -1);
+  if (item == nil) {
+    item = rootItem;
+  }
+  return ([item numberOfChildren] != -1);
 }
 
 - (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item {
-  return item == nil ? rootItem : [(FileSystemItem *)item childAtIndex:index];
+  if (item == nil) {
+    item = rootItem;
+  }
+  return [(FileSystemItem *)item childAtIndex:index];
 }
 
 - (id)outlineView:(NSOutlineView *)outlineView objectValueForTableColumn:(NSTableColumn *)tableColumn byItem:(id)item {
-  return item == nil ? [rootItem relativePath] : [item relativePath];
+  if (item == nil) {
+    item = rootItem;
+  }  
+  return [item relativePath];
 }
 
 
@@ -534,6 +587,7 @@ static NSMutableArray *leafNode = nil;
   for (item in [menu itemArray]) {
     [item setTarget:self];
     [item setTag:row];
+    [item setRepresentedObject:[fsItem fullPath]];
   }
   return menu;
 }
@@ -665,8 +719,7 @@ static NSMutableArray *leafNode = nil;
 }
 
 - (void)changeWorkingDirectoryToSelection:(NSMenuItem *)sender {
-  FileSystemItem *dirItem = [[self itemAtRow:[sender tag]] dirItem];
-  [self changeWorkingDirectory:[dirItem fullPath]];
+  [self changeWorkingDirectory:[sender representedObject]];
 }
 
 // TODO needs multiple selection support
@@ -780,6 +833,7 @@ static void change_occured(ConstFSEventStreamRef stream,
 
   [drawer release];
   [rootItem release];
+  [pathComponentsPopup release];
   [self unwatchRoot];
 
   [super dealloc];
@@ -799,6 +853,15 @@ static void change_occured(ConstFSEventStreamRef stream,
     [[self outlineView] reloadData];
     [[self outlineView] expandItem:rootItem];
   }
+}
+
+@end
+
+
+@implementation FlippedView
+
+- (BOOL) isFlipped {
+  return YES;
 }
 
 @end

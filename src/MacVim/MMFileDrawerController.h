@@ -6,6 +6,7 @@
 @interface MMFileDrawerController : NSViewController <NSOutlineViewDataSource, NSOutlineViewDelegate> {
   MMWindowController *windowController;
   NSDrawer *drawer;
+  NSPopUpButton *pathComponentsPopup;
   FileSystemItem *rootItem;
   FSEventStreamRef fsEventsStream;
   BOOL userHasChangedSelection;
@@ -19,4 +20,9 @@
 
 - (NSMenu *)menuForRow:(NSInteger)row;
 
+@end
+
+
+@interface FlippedView : NSView {
+}
 @end
