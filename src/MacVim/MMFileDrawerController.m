@@ -18,15 +18,16 @@
   NSString *path;
   FileSystemItem *parent;
   NSMutableArray *children;
+  MMVimController *vim;
   NSImage *icon;
   BOOL includesHiddenFiles;
   BOOL ignoreNextReload;
 }
 
-@property (nonatomic, assign) BOOL includesHiddenFiles, ignoreNextReload;
+@property (nonatomic, assign) BOOL includesHiddenFiles, ignoreNextReload, useWildIgnore;
 @property (readonly) FileSystemItem *parent;
 
-- (id)initWithPath:(NSString *)path parent:(FileSystemItem *)parentItem;
+- (id)initWithPath:(NSString *)path parent:(FileSystemItem *)parentItem vim:(MMVimController *)vim;
 - (NSInteger)numberOfChildren; // Returns -1 for leaf nodes
 - (FileSystemItem *)childAtIndex:(NSUInteger)n; // Invalid to call on leaf nodes
 - (NSString *)fullPath;
@@ -36,11 +37,13 @@
 - (BOOL)reloadRecursive:(BOOL)recursive;
 - (FileSystemItem *)itemAtPath:(NSString *)itemPath;
 - (FileSystemItem *)itemWithName:(NSString *)name;
+- (NSArray *)parents;
 
 @end
 
 @interface FileSystemItem (Private)
 - (FileSystemItem *)_itemAtPath:(NSArray *)components;
+- (BOOL)_wildIgnored:(NSString *)name;
 @end
 
 
@@ -54,17 +57,20 @@ static NSMutableArray *leafNode = nil;
   }
 }
 
-@synthesize parent, includesHiddenFiles, ignoreNextReload;
+@synthesize parent, includesHiddenFiles, ignoreNextReload, useWildIgnore;
 
-- (id)initWithPath:(NSString *)thePath parent:(FileSystemItem *)parentItem {
+- (id)initWithPath:(NSString *)thePath parent:(FileSystemItem *)parentItem vim:(MMVimController *)vimInstance {
   if ((self = [super init])) {
     icon = nil;
     path = [thePath retain];
     parent = parentItem;
+    vim = vimInstance;
     if (parent) {
       includesHiddenFiles = parent.includesHiddenFiles;
+      useWildIgnore = parent.useWildIgnore;
     } else {
       includesHiddenFiles = NO;
+      useWildIgnore = YES;
     }
     ignoreNextReload = NO;
   }
@@ -99,15 +105,12 @@ static NSMutableArray *leafNode = nil;
 //
 // This is really only so the controller knows whether or not to reload the view.
 - (BOOL)reloadRecursive:(BOOL)recursive {
-  if (ignoreNextReload) {
-    // Next time around it will be reloaded again
-    ignoreNextReload = NO;
-
-  } else if (children) {
+  if (children) {
     // Only reload items that have been loaded before
     // NSLog(@"Reload: %@", path);
     if (parent) {
       includesHiddenFiles = parent.includesHiddenFiles;
+      useWildIgnore = parent.useWildIgnore;
     }
 
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -132,6 +135,8 @@ static NSMutableArray *leafNode = nil;
           // It's a swap file, ignore it.
           continue;
         }
+      } else if (useWildIgnore && [self _wildIgnored:childName]) {
+        continue;
       }
 
       FileSystemItem *child = nil;
@@ -152,7 +157,9 @@ static NSMutableArray *leafNode = nil;
         [children removeObject:child];
       } else {
         // New child, so create a new item
-        child = [[FileSystemItem alloc] initWithPath:[path stringByAppendingPathComponent:childName] parent:self];
+        child = [[FileSystemItem alloc] initWithPath:[path stringByAppendingPathComponent:childName]
+                                              parent:self
+                                                 vim:vim];
         [reloaded addObject:child];
         [child release];
       }
@@ -165,6 +172,12 @@ static NSMutableArray *leafNode = nil;
     // NSLog(@"Not loaded yet, so don't reload: %@", path);
   }
   return NO;
+}
+
+- (BOOL)_wildIgnored:(NSString *)fileName {
+  NSString *eval = [NSString stringWithFormat:@"empty(expand(fnameescape('%@')))", fileName];
+  NSString *result = [vim evaluateVimExpression: eval];
+  return [result isEqualToString:@"1"];
 }
 
 - (BOOL)isLeaf {
@@ -213,10 +226,12 @@ static NSMutableArray *leafNode = nil;
 }
 
 - (FileSystemItem *)itemAtPath:(NSString *)itemPath {
+  if ([itemPath hasSuffix:@"/"])
+    itemPath = [itemPath stringByStandardizingPath];
   NSArray *components = [itemPath pathComponents];
   NSArray *root = [path pathComponents];
   // minus one extra because paths from FSEvents have a trailing slash
-  components = [components subarrayWithRange:NSMakeRange([root count], [components count] - [root count] - 1)];
+  components = [components subarrayWithRange:NSMakeRange([root count], [components count] - [root count])];
   return [self _itemAtPath:components];
 }
 
@@ -241,12 +256,23 @@ static NSMutableArray *leafNode = nil;
   return nil;
 }
 
+- (NSArray *)parents {
+  NSMutableArray *result = [[[NSMutableArray alloc] init] autorelease];
+  id item = parent;
+  while(item != nil) {
+    [result addObject:item];
+    item = [item parent];
+  }
+  return result;
+}
+
 - (void)dealloc {
   if (children != leafNode) {
     [children release];
   }
   [path release];
   [icon release];
+  vim = nil;
   [super dealloc];
 }
 
@@ -258,6 +284,8 @@ static NSMutableArray *leafNode = nil;
 
 @interface FilesOutlineView : NSOutlineView
 - (NSMenu *)menuForEvent:(NSEvent *)event;
+- (void)expandParentsOfItem:(id)item;
+- (void)selectItem:(id)item;
 @end
 
 @implementation FilesOutlineView
@@ -272,6 +300,34 @@ static NSMutableArray *leafNode = nil;
     [self selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
   }
   return [(MMFileDrawerController *)[self delegate] menuForRow:row];
+}
+
+- (void)expandParentsOfItem:(id)item {
+  NSArray *parents = [item parents];
+  NSEnumerator *e = [parents reverseObjectEnumerator];
+
+  // expand root node
+  [self expandItem: nil];
+
+  id parent;
+  while((parent = [e nextObject])) {
+    if(![self isExpandable:parent])
+      break;
+    if(![self isItemExpanded:parent])
+      [self expandItem: parent];
+  }
+}
+
+- (void)selectItem:(id)item {
+  NSInteger itemIndex = [self rowForItem:item];
+  if(itemIndex < 0) {
+    [self expandParentsOfItem:item];
+    itemIndex = [self rowForItem: item];
+    if(itemIndex < 0)
+      return;
+  }
+  [self selectRowIndexes:[NSIndexSet indexSetWithIndex:itemIndex] byExtendingSelection:NO];
+  [self scrollRowToVisible:itemIndex];
 }
 
 @end
@@ -315,10 +371,10 @@ static NSMutableArray *leafNode = nil;
 
   drawer = [[NSDrawer alloc] initWithContentSize:NSMakeSize(200, 0)
                                    preferredEdge:edge];
-  
+
   FlippedView *drawerView = [[[FlippedView alloc] initWithFrame:NSZeroRect] autorelease];
   [drawerView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-  
+
   FilesOutlineView *filesView = [[[FilesOutlineView alloc] initWithFrame:NSZeroRect] autorelease];
   [filesView setDelegate:self];
   [filesView setDataSource:self];
@@ -326,6 +382,7 @@ static NSMutableArray *leafNode = nil;
   [filesView setAllowsMultipleSelection:YES];
   NSTableColumn *column = [[[NSTableColumn alloc] initWithIdentifier:nil] autorelease];
   ImageAndTextCell *cell = [[[ImageAndTextCell alloc] init] autorelease];
+  [cell setFont:[NSFont fontWithName:[[cell font] fontName] size:11]];
   [cell setEditable:YES];
   [column setDataCell:cell];
   [filesView addTableColumn:column];
@@ -336,25 +393,24 @@ static NSMutableArray *leafNode = nil;
   [pathControl setPathStyle:NSPathStylePopUp];
   [pathControl setTarget:self];
   [pathControl setAction:@selector(changeWorkingDirectoryFromPathControl:)];
-  
+
   // NOTE: does this belong here?
   [pathControl setURL:[NSURL fileURLWithPath:[rootItem fullPath]]];
 
-  NSScrollView *scrollView = [[[NSScrollView alloc] initWithFrame:NSZeroRect] autorelease];
+  NSScrollView *scrollView = [[[NSScrollView alloc] initWithFrame:NSMakeRect(0, pathControl.frame.size.height, 0, 0)] autorelease];
   [scrollView setHasHorizontalScroller:YES];
   [scrollView setHasVerticalScroller:YES];
   [scrollView setAutohidesScrollers:YES];
   [scrollView setDocumentView:filesView];
-  
-  [scrollView setFrame:CGRectMake(0, pathControl.frame.size.height, 0, 0)];
-  [scrollView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-  
+
+  [scrollView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable | NSViewMaxYMargin];
+
   [drawerView addSubview:scrollView];
   [drawerView addSubview:pathControl];
   [drawer setContentView:drawerView];
 
   [self setView:filesView];
-  
+
   [[NSNotificationCenter defaultCenter] addObserver:self
                                            selector:@selector(pwdChanged:)
                                                name:@"MMPwdChanged"
@@ -378,7 +434,9 @@ static NSMutableArray *leafNode = nil;
     rootItem = nil;
   }
 
-  rootItem = [[FileSystemItem alloc] initWithPath:root parent:nil];
+  rootItem = [[FileSystemItem alloc] initWithPath:root
+                                           parent:nil
+                                              vim:[windowController vimController]];
   [pathControl setURL:[NSURL fileURLWithPath:root]];
   [(NSOutlineView *)[self view] expandItem:rootItem];
   [self watchRoot];
@@ -386,6 +444,8 @@ static NSMutableArray *leafNode = nil;
 
 - (void)open
 {
+  if([drawer state] == NSDrawerOpenState || [drawer state] == NSDrawerOpeningState)
+    return;
   if (!rootItem) {
     NSString *root = [[windowController vimController]
                                                   objectForVimStateKey:@"pwd"];
@@ -398,6 +458,8 @@ static NSMutableArray *leafNode = nil;
 
 - (void)close
 {
+  if([drawer state] == NSDrawerClosedState || [drawer state] == NSDrawerClosingState)
+    return;
   [drawer close];
 }
 
@@ -411,6 +473,19 @@ static NSMutableArray *leafNode = nil;
 
   [drawer setParentWindow:[windowController window]];
   [drawer toggle:self];
+
+    [self selectInDrawer];
+}
+
+- (void)selectInDrawer {
+  if([drawer state] != NSDrawerOpeningState && [drawer state] != NSDrawerOpenState)
+    return;
+  NSString *fn = [[windowController vimController]
+                                                  evaluateVimExpression:@"expand('%:p')"];
+  if([fn length] > 0) {
+    FileSystemItem *item = [rootItem itemAtPath:fn];
+    [[self outlineView] selectItem:item];
+  }
 }
 
 - (FileSystemItem *)itemAtRow:(NSInteger)row {
@@ -477,7 +552,7 @@ static NSMutableArray *leafNode = nil;
 
 // Data Source methods
 // ===================
- 
+
 - (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
   if (item == nil) {
     item = rootItem;
@@ -502,7 +577,7 @@ static NSMutableArray *leafNode = nil;
 - (id)outlineView:(NSOutlineView *)outlineView objectValueForTableColumn:(NSTableColumn *)tableColumn byItem:(id)item {
   if (item == nil) {
     item = rootItem;
-  }  
+  }
   return [item relativePath];
 }
 
@@ -621,18 +696,23 @@ static NSMutableArray *leafNode = nil;
   FileSystemItem *dirItem = item.parent;
   NSString *newPath = [[dirItem fullPath] stringByAppendingPathComponent:name];
   NSError *error = nil;
+  dirItem.ignoreNextReload = YES;
   BOOL moved = [[NSFileManager defaultManager] moveItemAtPath:[item fullPath]
                                                        toPath:newPath
                                                         error:&error];
   if (moved) {
     [dirItem reloadRecursive:NO];
-    [[self outlineView] reloadItem:dirItem reloadChildren:YES];
-    dirItem.ignoreNextReload = YES;
+    if(dirItem == rootItem)
+      [[self outlineView] reloadData];
+    else
+      [[self outlineView] reloadItem:dirItem reloadChildren:YES];
     // Select the renamed item
     NSInteger row = [[self outlineView] rowForItem:[dirItem itemWithName:name]];
     NSIndexSet *index = [NSIndexSet indexSetWithIndex:row];
     [[self outlineView] selectRowIndexes:index byExtendingSelection:NO];
+    // TODO: should reopen all open buffers with files inside of this directory
   } else {
+    dirItem.ignoreNextReload = NO;
     NSLog(@"[!] Unable to rename `%@' to `%@'. Error: %@", [item fullPath], newPath, [error localizedDescription]);
   }
 }
@@ -651,7 +731,8 @@ static NSMutableArray *leafNode = nil;
 //}
 
 - (void)newFolder:(NSMenuItem *)sender {
-  FileSystemItem *dirItem = [[self itemAtRow:[sender tag]] dirItem];
+  FileSystemItem *selItem = [self itemAtRow:[sender tag]];
+  FileSystemItem *dirItem = selItem ? [selItem dirItem] : rootItem;
   NSString *path = [[dirItem fullPath] stringByAppendingPathComponent:@"untitled folder"];
 
   int i = 2;
@@ -662,6 +743,9 @@ static NSMutableArray *leafNode = nil;
     i++;
   }
 
+  // Make sure that the next FSEvent for this item doesn't cause the view to stop editing
+  dirItem.ignoreNextReload = YES;
+
   [fileManager createDirectoryAtPath:result
          withIntermediateDirectories:NO
                           attributes:nil
@@ -669,12 +753,13 @@ static NSMutableArray *leafNode = nil;
 
   // Add the new folder to the items
   [dirItem reloadRecursive:NO]; // for now let's not create the item ourselves
-  [[self outlineView] reloadItem:dirItem reloadChildren:YES];
-  // Make sure that the next FSEvent for this item doesn't cause the view to stop editing
-  dirItem.ignoreNextReload = YES;
+  if(dirItem == rootItem)
+    [[self outlineView] reloadData];
+  else
+    [[self outlineView] reloadItem:dirItem reloadChildren:YES];
 
   // Show, select and edit the new folder
-  [[self outlineView] expandItem:dirItem];
+  if(selItem) [[self outlineView] expandItem:dirItem];
   FileSystemItem *newItem = [dirItem itemWithName:[result lastPathComponent]];
   NSInteger row = [[self outlineView] rowForItem:newItem];
   NSIndexSet *index = [NSIndexSet indexSetWithIndex:row];
@@ -709,17 +794,19 @@ static NSMutableArray *leafNode = nil;
 - (void)deleteSelectedFiles:(NSMenuItem *)sender {
   FileSystemItem *item = [self itemAtRow:[sender tag]];
   FileSystemItem *dirItem = item.parent;
+  dirItem.ignoreNextReload = YES;
   [[NSFileManager defaultManager] removeItemAtPath:[item fullPath] error:NULL];
   [dirItem reloadRecursive:NO];
-  [[self outlineView] reloadItem:dirItem reloadChildren:YES];
-  dirItem.ignoreNextReload = YES;
+  if(rootItem == dirItem)
+    [[self outlineView] reloadData];
+  else
+    [[self outlineView] reloadItem:dirItem reloadChildren:YES];
 }
 
 - (void)toggleShowHiddenFiles:(NSMenuItem *)sender {
   rootItem.includesHiddenFiles = !rootItem.includesHiddenFiles;
   [rootItem reloadRecursive:YES];
   [[self outlineView] reloadData];
-  [[self outlineView] expandItem:rootItem];
 }
 
 // Open elsewhere
@@ -768,10 +855,18 @@ static void change_occured(ConstFSEventStreamRef stream,
 - (void)changeOccurredAtPath:(NSString *)path {
   FileSystemItem *item = [rootItem itemAtPath:path];
   if (item) {
+    if (item.ignoreNextReload) {
+      item.ignoreNextReload = NO;
+      return;
+    }
     // NSLog(@"Change occurred in path: %@", [item fullPath]);
     // No need to reload recursive, the change occurred in *this* item only
     if ([item reloadRecursive:NO]) {
-      [[self outlineView] reloadItem:item reloadChildren:YES];
+      if(rootItem == item) {
+        [[self outlineView] reloadData];
+      }
+      else
+        [[self outlineView] reloadItem:item reloadChildren:YES];
     }
   }
 }
@@ -779,7 +874,7 @@ static void change_occured(ConstFSEventStreamRef stream,
 - (void)watchRoot {
   NSString *path = [rootItem fullPath];
   // NSLog(@"Watch: %@", path);
-  
+
   FSEventStreamContext context;
   context.version = 0;
   context.info = (void *)self;
@@ -814,10 +909,10 @@ static void change_occured(ConstFSEventStreamRef stream,
 - (void)dealloc {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
 
-  [drawer release];
-  [pathControl release];
-  [rootItem release];
   [self unwatchRoot];
+  [rootItem release]; rootItem = nil;
+  [drawer release]; drawer = nil;
+  [pathControl release]; pathControl = nil;
 
   [super dealloc];
 }
