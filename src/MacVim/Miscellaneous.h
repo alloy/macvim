@@ -54,6 +54,8 @@ extern NSString *MMUseInlineImKey;
 #endif // INCLUDE_OLD_IM_CODE
 extern NSString *MMSuppressTerminationAlertKey;
 extern NSString *MMDrawerPreferredEdgeKey;
+extern NSString *MMDrawerFontSizeKey;
+extern NSString *MMDrawerWildIgnoreKey;
 
 
 // Enum for MMUntitledWindowKey

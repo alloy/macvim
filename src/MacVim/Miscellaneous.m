@@ -46,6 +46,8 @@ NSString *MMUseInlineImKey              = @"MMUseInlineIm";
 #endif // INCLUDE_OLD_IM_CODE
 NSString *MMSuppressTerminationAlertKey = @"MMSuppressTerminationAlert";
 NSString *MMDrawerPreferredEdgeKey      = @"MMDrawerPreferredEdge";
+NSString *MMDrawerFontSizeKey           = @"MMFileDrawerFontSize";
+NSString *MMDrawerWildIgnoreKey         = @"MMFileDrawerWildIgnore";
 
 
 

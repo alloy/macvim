@@ -224,6 +224,8 @@ fsEventCallback(ConstFSEventStreamRef streamRef,
 #endif // INCLUDE_OLD_IM_CODE
         [NSNumber numberWithBool:NO],   MMSuppressTerminationAlertKey,
         [NSNumber numberWithInt:0],     MMDrawerPreferredEdgeKey,
+        [NSNumber numberWithInt:12],    MMDrawerFontSizeKey,
+        [NSNumber numberWithBool:YES],  MMDrawerWildIgnoreKey,
         nil];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:dict];

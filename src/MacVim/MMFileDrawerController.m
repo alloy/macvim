@@ -70,7 +70,9 @@ static NSMutableArray *leafNode = nil;
       useWildIgnore = parent.useWildIgnore;
     } else {
       includesHiddenFiles = NO;
-      useWildIgnore = YES;
+      NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+      useWildIgnore = [ud boolForKey:MMDrawerWildIgnoreKey];
+      NSLog(@"WildIgnore %d", useWildIgnore);
     }
     ignoreNextReload = NO;
   }
@@ -371,6 +373,7 @@ static NSMutableArray *leafNode = nil;
   NSRectEdge edge = [ud integerForKey:MMDrawerPreferredEdgeKey] <= 0
                   ? NSMaxXEdge
                   : NSMinXEdge;
+  NSInteger fontSize = [ud integerForKey:MMDrawerFontSizeKey];
 
   drawer = [[NSDrawer alloc] initWithContentSize:NSMakeSize(200, 0)
                                    preferredEdge:edge];
@@ -385,6 +388,7 @@ static NSMutableArray *leafNode = nil;
   [filesView setAllowsMultipleSelection:YES];
   NSTableColumn *column = [[[NSTableColumn alloc] initWithIdentifier:nil] autorelease];
   ImageAndTextCell *cell = [[[ImageAndTextCell alloc] init] autorelease];
+  [cell setFont:[NSFont fontWithName:[[cell font] fontName] size:fontSize]];
   [cell setEditable:YES];
   [column setDataCell:cell];
   [filesView addTableColumn:column];
@@ -395,7 +399,7 @@ static NSMutableArray *leafNode = nil;
   [pathControl setAutoresizingMask:NSViewWidthSizable];
   [pathControl setBackgroundColor:[NSColor whiteColor]];
   [pathControl setPathStyle:NSPathStylePopUp];
-  [pathControl setFont:[NSFont fontWithName:[[pathControl font] fontName] size:12]];
+  [pathControl setFont:[NSFont fontWithName:[[pathControl font] fontName] size:fontSize]];
   [pathControl setTarget:self];
   [pathControl setAction:@selector(changeWorkingDirectoryFromPathControl:)];
 
