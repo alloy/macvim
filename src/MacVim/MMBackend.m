@@ -1265,14 +1265,16 @@ extern GuiFont gui_mch_retain_font(GuiFont font);
         // queue, else the input queue may fill up as a result of Vim not being
         // able to keep up with the speed at which new messages are received.
         // TODO: Remove all previous instances (there could be many)?
-        int i, count = [inputQueue count];
-        for (i = 1; i < count; i += 2) {
-            if ([[inputQueue objectAtIndex:i-1] intValue] == msgid) {
-                ASLogDebug(@"Input queue filling up, remove message: %s",
-                                                        MessageStrings[msgid]);
-                [inputQueue removeObjectAtIndex:i];
-                [inputQueue removeObjectAtIndex:i-1];
-                break;
+        if(AddInputMsgID != msgid) {
+            int i, count = [inputQueue count];
+            for (i = 1; i < count; i += 2) {
+                if ([[inputQueue objectAtIndex:i-1] intValue] == msgid) {
+                    ASLogDebug(@"Input queue filling up, remove message: %s",
+                            MessageStrings[msgid]);
+                    [inputQueue removeObjectAtIndex:i];
+                    [inputQueue removeObjectAtIndex:i-1];
+                    break;
+                }
             }
         }
 
