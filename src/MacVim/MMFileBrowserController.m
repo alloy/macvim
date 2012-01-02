@@ -323,6 +323,7 @@ static NSString *LEFT_KEY_CHAR, *RIGHT_KEY_CHAR, *DOWN_KEY_CHAR, *UP_KEY_CHAR;
   if ((self = [super initWithFrame:frame])) {
     self.refusesFirstResponder = YES;
   }
+  [self setSelectionHighlightStyle:NSTableViewSelectionHighlightStyleSourceList];
   return self;
 }
 
@@ -513,7 +514,6 @@ static NSString *LEFT_KEY_CHAR, *RIGHT_KEY_CHAR, *DOWN_KEY_CHAR, *UP_KEY_CHAR;
   pathControl = [[NSPathControl alloc] initWithFrame:NSMakeRect(0, 0, 0, 20)];
   [pathControl setRefusesFirstResponder:YES];
   [pathControl setAutoresizingMask:NSViewWidthSizable];
-  [pathControl setBackgroundColor:[NSColor whiteColor]];
   [pathControl setPathStyle:NSPathStylePopUp];
   [pathControl setFont:[NSFont fontWithName:[[pathControl font] fontName] size:12]];
   [pathControl setTarget:self];
