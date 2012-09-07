@@ -113,6 +113,8 @@
 
 - (void)drawWithFrame:(NSRect)cellFrame inView:(NSView *)controlView {
     if (image != nil) {
+        [NSGraphicsContext saveGraphicsState];
+
         NSRect imageFrame;
         NSSize imageSize = [image size];
         NSDivideRect(cellFrame, &imageFrame, &cellFrame, 3 + imageSize.width, NSMinXEdge);
@@ -124,12 +126,16 @@
         imageFrame.size = imageSize;
 
         if ([controlView isFlipped]) {
-            imageFrame.origin.y += ceil((cellFrame.size.height + imageFrame.size.height) / 2);
-        } else {
-            imageFrame.origin.y += ceil((cellFrame.size.height - imageFrame.size.height) / 2);
+            NSAffineTransform *transform = [NSAffineTransform transform];
+            [transform scaleXBy:1.0 yBy:-1.0];
+            [transform translateXBy:0.0 yBy:-controlView.bounds.size.height];
+            [transform concat];
+            imageFrame.origin.y = controlView.bounds.size.height - cellFrame.origin.y - cellFrame.size.height;
         }
+        imageFrame.origin.y += ceil((cellFrame.size.height - imageFrame.size.height) / 2);
 
-        [image compositeToPoint:imageFrame.origin operation:NSCompositeSourceOver];
+        [image drawAtPoint:imageFrame.origin fromRect:controlView.frame operation:NSCompositeSourceOver fraction:1.0];
+        [NSGraphicsContext restoreGraphicsState];
     }
     [super drawWithFrame:cellFrame inView:controlView];
 }
