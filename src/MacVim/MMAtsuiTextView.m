@@ -543,7 +543,7 @@ defaultLineHeightForFont(NSFont *font)
     NSRectFill(rect);
 
     NSPoint pt = { insetSize.width, insetSize.height };
-    [contentImage compositeToPoint:pt operation:NSCompositeCopy];
+    [contentImage drawAtPoint:pt fromRect:rect operation:NSCompositeCopy fraction:1.0];
 
 #ifdef INCLUDE_OLD_IM_CODE
     if ([self hasMarkedText] && ![helper useInlineIm]) {
