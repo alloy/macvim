@@ -1443,6 +1443,8 @@ find_tags(pat, num_matches, matchesp, flags, mincount, buf_ffname)
 	orgpat.len = p_tl;
 
     prepare_pats(&orgpat, has_re);
+    if (has_re && orgpat.regmatch.regprog == NULL)
+	goto findtag_end;
 
 #ifdef FEAT_TAG_BINS
     /* This is only to avoid a compiler warning for using search_info
@@ -1795,8 +1797,16 @@ line_read_in:
 	     */
 	    if (state == TS_START)
 	    {
-		if (STRNCMP(lbuf, "!_TAG_", 6) <= 0)
+		/* The header ends when the line sorts below "!_TAG_".  When
+		 * case is folded lower case letters sort before "_". */
+		if (STRNCMP(lbuf, "!_TAG_", 6) <= 0
+				|| (lbuf[0] == '!' && ASCII_ISLOWER(lbuf[1])))
 		{
+		    if (STRNCMP(lbuf, "!_TAG_", 6) != 0)
+			/* Non-header item before the header, e.g. "!" itself.
+			 */
+			goto parse_line;
+
 		    /*
 		     * Read header line.
 		     */
@@ -1891,6 +1901,7 @@ line_read_in:
 #endif
 	    }
 
+parse_line:
 	    /*
 	     * Figure out where the different strings are in this line.
 	     * For "normal" tags: Do a quick check if the tag matches.
@@ -2489,7 +2500,7 @@ line_read_in:
 
 findtag_end:
     vim_free(lbuf);
-    vim_free(orgpat.regmatch.regprog);
+    vim_regfree(orgpat.regmatch.regprog);
     vim_free(tag_fname);
 #ifdef FEAT_EMACS_TAGS
     vim_free(ebuf);

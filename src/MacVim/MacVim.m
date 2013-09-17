@@ -100,6 +100,7 @@ char *MessageStrings[] =
     "GestureMsgID",
     "AddToMRUMsgID",
     "ForceRedrawMsgID",
+    "BackingPropertiesChangedMsgID",
     "END OF MESSAGE IDs"     // NOTE: Must be last!
 };
 
