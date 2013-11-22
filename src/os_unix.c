@@ -827,7 +827,7 @@ init_signal_stack()
 		|| MAC_OS_X_VERSION_MAX_ALLOWED <= 1040)
 	/* missing prototype.  Adding it to osdef?.h.in doesn't work, because
 	 * "struct sigaltstack" needs to be declared. */
-	extern int sigaltstack __ARGS((const struct sigaltstack *ss, struct sigaltstack *oss));
+	extern int sigaltstack __ARGS((const stack_t *ss, stack_t *oss));
 #  endif
 
 #  ifdef HAVE_SS_BASE
