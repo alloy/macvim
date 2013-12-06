@@ -26,14 +26,10 @@ SCRIPTS = test1.out test2.out test3.out test4.out test5.out test6.out \
 		test64.out test65.out test66.out test67.out test68.out \
 		test69.out test70.out test71.out test72.out test73.out \
 		test74.out test75.out test76.out test77.out test78.out \
-<<<<<<< HEAD
-		test79.out test80.out test81.out test82.out
-=======
 		test79.out test80.out test81.out test82.out test83.out \
 		test84.out test85.out test86.out test87.out test88.out \
 		test89.out test90.out test91.out test92.out test93.out \
 		test94.out test95.out test96.out test97.out test98.out
->>>>>>> upstream/master
 
 SCRIPTS_GUI = test16.out
 
@@ -96,12 +92,9 @@ test1.out: test1.in
 		  fi \
 		else echo $* NO OUTPUT >>test.log; \
 		fi"
-<<<<<<< HEAD
-=======
 	@/bin/sh -c "if test -f valgrind; then\
 		  mv -f valgrind valgrind.$*; \
 		fi"
->>>>>>> upstream/master
 	-rm -rf X* test.ok viminfo
 
 test49.out: test49.vim
