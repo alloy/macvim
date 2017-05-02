@@ -25,6 +25,8 @@
  * Don't use it for the Mac, it causes a warning for precompiled headers.
  * TODO: use a configure check for precompiled headers?
  */
+#include <AvailabilityMacros.h>
+
 #if !defined(__APPLE__) && !defined(__TANDEM)
 # define select select_declared_wrong
 #endif
